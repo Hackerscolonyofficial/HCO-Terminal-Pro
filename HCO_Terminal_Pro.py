@@ -37,12 +37,16 @@ def clear():
 def tool_lock():
     clear()
     print(f"{RED}This tool is locked 🔒{RESET}")
-    print(f"{YELLOW}Only ethical usage allowed! Scan your own devices/networks.{RESET}")
+    print(f"{YELLOW}Only ethical usage allowed! Scan your own devices/networks.{RESET}\n")
     for i in range(TOOL_LOCK_SECONDS,0,-1):
         print(f"{YELLOW}Redirecting to YouTube in {i} seconds...{RESET}", end="\r")
         time.sleep(1)
     print("\n")
-    os.system(f'am start -a android.intent.action.VIEW -d "{YOUTUBE_URL}"')
+    # Try to open YouTube via Termux-open
+    try:
+        os.system(f'termux-open "{YOUTUBE_URL}"')
+    except:
+        print(f"{GREEN}Open YouTube manually: {YOUTUBE_URL}{RESET}")
     input(f"{GREEN}Press Enter after returning from YouTube to unlock...{RESET}")
 
 # -------------------- Banner --------------------
@@ -95,10 +99,10 @@ learn <topic>    - Short explanation
 examples         - Show ethical examples
 tips             - Ethical hacking tips
 safeports        - Safe ports to scan
-osinfo           - OS, CPU, memory
+osinfo           - OS, CPU, Python version
 diskinfo         - Disk usage
 meminfo          - RAM & swap
-termuxinfo       - Termux environment
+termuxinfo       - Termux environment info
 whoami           - Current user & hostname
 uptime           - System uptime
 clear            - Clear dashboard
@@ -215,29 +219,6 @@ def main_dashboard(stdscr):
         stdscr.clear()
         banner(stdscr)
         dash.display(stdscr)
-
-# -------------------- Dashboard Class --------------------
-class Dashboard:
-    def __init__(self, size=DASHBOARD_SIZE):
-        self.size = size
-        self.entries = []
-
-    def add_entry(self, command, output):
-        timestamp = time.strftime("%H:%M:%S")
-        self.entries.append((timestamp, command, output))
-        if len(self.entries) > self.size:
-            self.entries.pop(0)
-
-    def display(self, stdscr):
-        row = 4
-        for ts, cmd, out in self.entries:
-            stdscr.addstr(row, 0, f"[{ts}] {cmd}", curses.color_pair(3))
-            row += 1
-            for line in out.split("\n"):
-                stdscr.addstr(row, 2, line, curses.color_pair(1))
-                row += 1
-            row += 1
-        stdscr.refresh()
 
 # -------------------- Main --------------------
 if __name__=="__main__":
