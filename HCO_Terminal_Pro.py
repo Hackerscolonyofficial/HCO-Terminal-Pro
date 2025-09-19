@@ -38,15 +38,19 @@ def tool_lock():
     clear()
     print(f"{RED}This tool is locked 🔒{RESET}")
     print(f"{YELLOW}Only ethical usage allowed! Scan your own devices/networks.{RESET}\n")
+    
+    # Countdown
     for i in range(TOOL_LOCK_SECONDS,0,-1):
         print(f"{YELLOW}Redirecting to YouTube in {i} seconds...{RESET}", end="\r")
         time.sleep(1)
     print("\n")
+    
     # Try to open YouTube via Termux-open
     try:
         os.system(f'termux-open "{YOUTUBE_URL}"')
     except:
         print(f"{GREEN}Open YouTube manually: {YOUTUBE_URL}{RESET}")
+    
     input(f"{GREEN}Press Enter after returning from YouTube to unlock...{RESET}")
 
 # -------------------- Banner --------------------
@@ -192,8 +196,6 @@ def main_dashboard(stdscr):
     curses.init_pair(3, curses.COLOR_YELLOW, -1) # command
     curses.init_pair(4, curses.COLOR_MAGENTA, -1) # separator
 
-    tool_lock()
-    install_dependencies()
     dash = Dashboard()
     banner(stdscr)
 
@@ -222,4 +224,6 @@ def main_dashboard(stdscr):
 
 # -------------------- Main --------------------
 if __name__=="__main__":
+    tool_lock()            # Tool lock + YouTube redirect (before curses)
+    install_dependencies()  # Ensure all packages installed
     curses.wrapper(main_dashboard)
