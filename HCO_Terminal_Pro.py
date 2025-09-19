@@ -3,20 +3,29 @@
 # By Azhar (Hackers Colony)
 # Single-file Termux interactive tool
 
-import os, sys, platform, subprocess, time, random, curses
+import os, sys, platform, subprocess, time, random, curses, requests, json
 
 # -------------------- Configuration --------------------
 YOUTUBE_URL = "https://youtube.com/@hackers_colony_tech"
 TOOL_LOCK_SECONDS = 10
-DASHBOARD_SIZE = 10  # Number of commands to keep in dashboard
+DASHBOARD_SIZE = 12  # Number of commands to keep in dashboard
+QUOTE_LIST = [
+    "The quieter you become, the more you hear.",
+    "Stay ethical, stay curious.",
+    "Learn, Practice, Protect.",
+    "Knowledge is power, hacking is skill.",
+    "Scan only your own devices. Ethics first."
+]
+LEARNING_TOPICS = {
+    "nmap": "Nmap discovers hosts and services. Use: scan <IP>",
+    "ping": "Ping checks connectivity. Use: ping <host>",
+    "whois": "WHOIS shows domain/IP info. Use: whois <domain/IP>",
+    "dns": "DNS resolves domains. Use: dnslookup <domain>",
+    "ethical": "Always get written permission before scanning.",
+    "safeports": "Scan only safe ports like 22, 80, 443 for practice.",
+}
 
-# -------------------- Colors --------------------
-RED = "\033[91m"
-GREEN = "\033[92m"
-CYAN = "\033[96m"
-YELLOW = "\033[93m"
-MAGENTA = "\033[95m"
-RESET = "\033[0m"
+SAFE_PORTS = [22, 80, 443, 8080, 8888]
 
 # -------------------- Utilities --------------------
 def run_cmd(cmd):
@@ -36,12 +45,12 @@ def clear():
 # -------------------- Tool Lock --------------------
 def tool_lock():
     clear()
-    print(f"{RED}This tool is locked 🔒{RESET}")
-    print(f"{YELLOW}Only ethical usage allowed! Scan your own devices/networks.{RESET}\n")
+    print("This tool is locked 🔒")
+    print("Only ethical usage allowed! Scan your own devices/networks.\n")
     
     # Countdown
     for i in range(TOOL_LOCK_SECONDS,0,-1):
-        print(f"{YELLOW}Redirecting to YouTube in {i} seconds...{RESET}", end="\r")
+        print(f"Redirecting to YouTube in {i} seconds...", end="\r")
         time.sleep(1)
     print("\n")
     
@@ -49,16 +58,9 @@ def tool_lock():
     try:
         os.system(f'termux-open "{YOUTUBE_URL}"')
     except:
-        print(f"{GREEN}Open YouTube manually: {YOUTUBE_URL}{RESET}")
+        print(f"Open YouTube manually: {YOUTUBE_URL}")
     
-    input(f"{GREEN}Press Enter after returning from YouTube to unlock...{RESET}")
-
-# -------------------- Banner --------------------
-def banner(stdscr):
-    stdscr.clear()
-    stdscr.addstr(0, 0, f"HCO Terminal Pro — by Azhar", curses.color_pair(2))
-    stdscr.addstr(1, 0, "Ethical Hacking & Termux Learning", curses.color_pair(3))
-    stdscr.addstr(2, 0, "-"*60, curses.color_pair(4))
+    input("Press Enter after returning from YouTube to unlock...")
 
 # -------------------- Dashboard --------------------
 class Dashboard:
@@ -73,7 +75,7 @@ class Dashboard:
             self.entries.pop(0)
 
     def display(self, stdscr):
-        row = 4
+        row = 5
         for ts, cmd, out in self.entries:
             stdscr.addstr(row, 0, f"[{ts}] {cmd}", curses.color_pair(3))
             row += 1
@@ -82,6 +84,14 @@ class Dashboard:
                 row += 1
             row += 1
         stdscr.refresh()
+
+# -------------------- Banner --------------------
+def banner(stdscr):
+    stdscr.addstr(0, 0, f"HCO Terminal Pro — by Azhar", curses.color_pair(2))
+    stdscr.addstr(1, 0, "Ethical Hacking & Termux Learning", curses.color_pair(3))
+    stdscr.addstr(2, 0, "-"*60, curses.color_pair(4))
+    quote = random.choice(QUOTE_LIST)
+    stdscr.addstr(3, 0, f"Quote: {quote}", curses.color_pair(1))
 
 # -------------------- Commands --------------------
 def cmd_help(args=None):
@@ -92,14 +102,14 @@ ports <IP>       - quick TCP port check
 ping <host>      - ping host
 dnslookup <dom>  - DNS lookup
 whois <dom/IP>   - WHOIS info
-traceroute <host>- route packets
+traceroute <host)- route packets
 netinfo          - IP/interfaces/connections
 checkurl <URL>   - HTTP headers/status
 ipinfo <IP>      - Geolocation info
 fetch <URL>      - Download file
 banner <text>    - Print hacker banner
 motd             - Quote of the day
-learn <topic>    - Short explanation
+learn <topic>    - Short ethical hacking explanation
 examples         - Show ethical examples
 tips             - Ethical hacking tips
 safeports        - Safe ports to scan
@@ -109,27 +119,38 @@ meminfo          - RAM & swap
 termuxinfo       - Termux environment info
 whoami           - Current user & hostname
 uptime           - System uptime
+history          - Show command history
 clear            - Clear dashboard
 help             - This help
 exit             - Quit
 """
 
-def cmd_scan(args): return run_cmd(f"nmap {' '.join(args)}") if args else "Usage: scan <IP>"
+def cmd_scan(args):
+    if not args: return "Usage: scan <IP>"
+    return run_cmd(f"nmap {args[0]} -Pn -sV")
+
 def cmd_ports(args):
     if not args: return "Usage: ports <IP>"
-    ports = [21,22,23,25,53,80,110,139,143,443,445,3389]
     results=[]
-    for port in ports:
+    for port in SAFE_PORTS:
         res = run_cmd(f"nc -zv {args[0]} {port}")
         results.append(res)
     return "\n".join(results)
+
 def cmd_ping(args): return run_cmd(f"ping -c 4 {args[0]}") if args else "Usage: ping <host>"
 def cmd_dnslookup(args): return run_cmd(f"nslookup {args[0]}") if args else "Usage: dnslookup <domain>"
 def cmd_whois(args): return run_cmd(f"whois {args[0]}") if args else "Usage: whois <domain/IP>"
 def cmd_traceroute(args): return run_cmd(f"traceroute {args[0]}") if args else "Usage: traceroute <host>"
 def cmd_netinfo(args): return run_cmd("ifconfig || ip addr")
 def cmd_checkurl(args): return run_cmd(f"curl -I {args[0]}") if args else "Usage: checkurl <URL>"
-def cmd_ipinfo(args): return run_cmd(f"curl -s ipinfo.io/{args[0]}") if args else "Usage: ipinfo <IP>"
+def cmd_ipinfo(args):
+    if not args: return "Usage: ipinfo <IP>"
+    try:
+        res = requests.get(f"https://ipinfo.io/{args[0]}/json", timeout=5)
+        data = res.json()
+        return json.dumps(data, indent=2)
+    except: return "Failed to fetch IP info"
+
 def cmd_fetch(args): return run_cmd(f"curl -O {args[0]}") if args else "Usage: fetch <URL>"
 def cmd_banner(args): 
     text=" ".join(args)
@@ -137,15 +158,21 @@ def cmd_banner(args):
     elif run_cmd("which figlet"): os.system(f'figlet "{text}"')
     else: return "Install toilet or figlet to use banner"
     return "Banner displayed"
+
 def cmd_motd(args=None): 
-    quotes=["The quieter you become, the more you hear.","Stay ethical, stay curious.","Learn, Practice, Protect.","Knowledge is power, hacking is skill."]
-    return random.choice(quotes)
+    return random.choice(QUOTE_LIST)
+
 def cmd_learn(args): 
-    topics={"nmap":"Nmap discovers hosts and services.","ping":"Ping checks connectivity.","whois":"WHOIS shows domain/IP info.","dns":"DNS resolves domains.","ethical":"Always get permission before scanning."}
-    return topics.get(args[0].lower(),"No info for this topic") if args else "Usage: learn <topic>"
-def cmd_examples(args=None): return "scan 192.168.1.1\nports 192.168.1.1\nping 8.8.8.8\nfetch https://example.com/file.txt\ndnslookup example.com\nwhois example.com"
-def cmd_tips(args=None): return "Always scan your own devices.\nNever misuse commands.\nPractice in labs.\nDocument responsibly."
-def cmd_safeports(args=None): return "Safe ports: 22,80,443,8080"
+    if not args: return "Usage: learn <topic>"
+    return LEARNING_TOPICS.get(args[0].lower(), "No info for this topic")
+
+def cmd_examples(args=None):
+    return "Example usage:\nscan 192.168.1.1\nports 192.168.1.1\nping 8.8.8.8\nfetch https://example.com/file.txt"
+
+def cmd_tips(args=None):
+    return "Tips:\n- Always scan your own devices.\n- Never misuse commands.\n- Practice in labs.\n- Document responsibly."
+
+def cmd_safeports(args=None): return f"Safe ports: {', '.join(map(str, SAFE_PORTS))}"
 def cmd_osinfo(args=None): return f"OS: {platform.system()} {platform.release()}\nPython: {platform.python_version()}\nMachine: {platform.machine()}"
 def cmd_diskinfo(args=None): return run_cmd("df -h")
 def cmd_meminfo(args=None): return run_cmd("free -h")
@@ -153,6 +180,7 @@ def cmd_termuxinfo(args=None): return f"HOME={os.environ.get('HOME','N/A')}\nPAT
 def cmd_whoami(args=None): return f"User: {run_cmd('whoami')} | Host: {run_cmd('hostname')}"
 def cmd_uptime(args=None): return run_cmd("uptime")
 def cmd_clear(args=None): return "clear"
+def cmd_history(args=None): return "\n".join([f"{i+1}. {c[1]}" for i,c in enumerate(dash.entries)])
 
 COMMANDS = {
     "help": cmd_help,
@@ -179,6 +207,7 @@ COMMANDS = {
     "whoami": cmd_whoami,
     "uptime": cmd_uptime,
     "clear": cmd_clear,
+    "history": cmd_history,
     "exit": lambda args=None: sys.exit(0)
 }
 
@@ -189,22 +218,23 @@ def install_dependencies():
 
 # -------------------- Main curses loop --------------------
 def main_dashboard(stdscr):
+    global dash
+    dash = Dashboard()
     curses.start_color()
     curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_GREEN, -1)  # output
-    curses.init_pair(2, curses.COLOR_CYAN, -1)   # banner title
-    curses.init_pair(3, curses.COLOR_YELLOW, -1) # command
+    curses.init_pair(1, curses.COLOR_GREEN, -1)   # output
+    curses.init_pair(2, curses.COLOR_CYAN, -1)    # banner title
+    curses.init_pair(3, curses.COLOR_YELLOW, -1)  # command
     curses.init_pair(4, curses.COLOR_MAGENTA, -1) # separator
 
-    dash = Dashboard()
     banner(stdscr)
 
     while True:
-        stdscr.addstr(3,0,f"{GREEN}[HCO-Terminal]> {RESET}")
+        stdscr.addstr(4,0,f"[HCO-Terminal]> ", curses.color_pair(1))
         stdscr.refresh()
         curses.echo()
         try:
-            cmd_input = stdscr.getstr(3,17).decode("utf-8").strip()
+            cmd_input = stdscr.getstr(4,17).decode("utf-8").strip()
         except:
             continue
         curses.noecho()
@@ -217,13 +247,18 @@ def main_dashboard(stdscr):
             output = func(args)
         else:
             output = f"Unknown command: {cmd}"
-        dash.add_entry(cmd_input, output)
-        stdscr.clear()
-        banner(stdscr)
-        dash.display(stdscr)
+        if output=="clear":
+            stdscr.clear()
+            dash.entries.clear()
+            banner(stdscr)
+        else:
+            dash.add_entry(cmd_input, output)
+            stdscr.clear()
+            banner(stdscr)
+            dash.display(stdscr)
 
 # -------------------- Main --------------------
 if __name__=="__main__":
-    tool_lock()            # Tool lock + YouTube redirect (before curses)
+    tool_lock()            # Tool lock + YouTube redirect
     install_dependencies()  # Ensure all packages installed
     curses.wrapper(main_dashboard)
