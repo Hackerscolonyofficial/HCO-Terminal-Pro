@@ -27,6 +27,9 @@ LEARNING_TOPICS = {
 
 SAFE_PORTS = [22, 80, 443, 8080, 8888]
 
+# Global dashboard instance
+dash = None
+
 # -------------------- Utilities --------------------
 def run_cmd(cmd):
     try:
@@ -80,9 +83,13 @@ class Dashboard:
             stdscr.addstr(row, 0, f"[{ts}] {cmd}", curses.color_pair(3))
             row += 1
             for line in out.split("\n"):
+                if row >= curses.LINES - 1:
+                    break
                 stdscr.addstr(row, 2, line, curses.color_pair(1))
                 row += 1
             row += 1
+            if row >= curses.LINES - 1:
+                break
         stdscr.refresh()
 
 # -------------------- Banner --------------------
@@ -133,30 +140,49 @@ def cmd_ports(args):
     if not args: return "Usage: ports <IP>"
     results=[]
     for port in SAFE_PORTS:
-        res = run_cmd(f"nc -zv {args[0]} {port}")
+        res = run_cmd(f"nc -zv {args[0]} {port} 2>&1")
         results.append(res)
     return "\n".join(results)
 
-def cmd_ping(args): return run_cmd(f"ping -c 4 {args[0]}") if args else "Usage: ping <host>"
-def cmd_dnslookup(args): return run_cmd(f"nslookup {args[0]}") if args else "Usage: dnslookup <domain>"
-def cmd_whois(args): return run_cmd(f"whois {args[0]}") if args else "Usage: whois <domain/IP>"
-def cmd_traceroute(args): return run_cmd(f"traceroute {args[0]}") if args else "Usage: traceroute <host>"
-def cmd_netinfo(args): return run_cmd("ifconfig || ip addr")
-def cmd_checkurl(args): return run_cmd(f"curl -I {args[0]}") if args else "Usage: checkurl <URL>"
+def cmd_ping(args): 
+    return run_cmd(f"ping -c 4 {args[0]}") if args else "Usage: ping <host>"
+
+def cmd_dnslookup(args): 
+    return run_cmd(f"nslookup {args[0]}") if args else "Usage: dnslookup <domain>"
+
+def cmd_whois(args): 
+    return run_cmd(f"whois {args[0]}") if args else "Usage: whois <domain/IP>"
+
+def cmd_traceroute(args): 
+    return run_cmd(f"traceroute {args[0]}") if args else "Usage: traceroute <host>"
+
+def cmd_netinfo(args): 
+    return run_cmd("ifconfig || ip addr")
+
+def cmd_checkurl(args): 
+    return run_cmd(f"curl -I {args[0]}") if args else "Usage: checkurl <URL>"
+
 def cmd_ipinfo(args):
     if not args: return "Usage: ipinfo <IP>"
     try:
         res = requests.get(f"https://ipinfo.io/{args[0]}/json", timeout=5)
         data = res.json()
         return json.dumps(data, indent=2)
-    except: return "Failed to fetch IP info"
+    except Exception as e:
+        return f"Failed to fetch IP info: {str(e)}"
 
-def cmd_fetch(args): return run_cmd(f"curl -O {args[0]}") if args else "Usage: fetch <URL>"
+def cmd_fetch(args): 
+    return run_cmd(f"curl -O {args[0]}") if args else "Usage: fetch <URL>"
+
 def cmd_banner(args): 
+    if not args: return "Usage: banner <text>"
     text=" ".join(args)
-    if run_cmd("which toilet"): os.system(f'toilet -f mono12 -F metal "{text}"')
-    elif run_cmd("which figlet"): os.system(f'figlet "{text}"')
-    else: return "Install toilet or figlet to use banner"
+    if run_cmd("which toilet") != "": 
+        os.system(f'toilet -f mono12 -F metal "{text}"')
+    elif run_cmd("which figlet") != "": 
+        os.system(f'figlet "{text}"')
+    else: 
+        return "Install toilet or figlet to use banner"
     return "Banner displayed"
 
 def cmd_motd(args=None): 
@@ -172,15 +198,32 @@ def cmd_examples(args=None):
 def cmd_tips(args=None):
     return "Tips:\n- Always scan your own devices.\n- Never misuse commands.\n- Practice in labs.\n- Document responsibly."
 
-def cmd_safeports(args=None): return f"Safe ports: {', '.join(map(str, SAFE_PORTS))}"
-def cmd_osinfo(args=None): return f"OS: {platform.system()} {platform.release()}\nPython: {platform.python_version()}\nMachine: {platform.machine()}"
-def cmd_diskinfo(args=None): return run_cmd("df -h")
-def cmd_meminfo(args=None): return run_cmd("free -h")
-def cmd_termuxinfo(args=None): return f"HOME={os.environ.get('HOME','N/A')}\nPATH={os.environ.get('PATH','N/A')}"
-def cmd_whoami(args=None): return f"User: {run_cmd('whoami')} | Host: {run_cmd('hostname')}"
-def cmd_uptime(args=None): return run_cmd("uptime")
-def cmd_clear(args=None): return "clear"
-def cmd_history(args=None): return "\n".join([f"{i+1}. {c[1]}" for i,c in enumerate(dash.entries)])
+def cmd_safeports(args=None): 
+    return f"Safe ports: {', '.join(map(str, SAFE_PORTS))}"
+
+def cmd_osinfo(args=None): 
+    return f"OS: {platform.system()} {platform.release()}\nPython: {platform.python_version()}\nMachine: {platform.machine()}"
+
+def cmd_diskinfo(args=None): 
+    return run_cmd("df -h")
+
+def cmd_meminfo(args=None): 
+    return run_cmd("free -h")
+
+def cmd_termuxinfo(args=None): 
+    return f"HOME={os.environ.get('HOME','N/A')}\nPATH={os.environ.get('PATH','N/A')}"
+
+def cmd_whoami(args=None): 
+    return f"User: {run_cmd('whoami')} | Host: {run_cmd('hostname')}"
+
+def cmd_uptime(args=None): 
+    return run_cmd("uptime")
+
+def cmd_clear(args=None): 
+    return "clear"
+
+def cmd_history(args=None): 
+    return "\n".join([f"{i+1}. {c[1]}" for i,c in enumerate(dash.entries)])
 
 COMMANDS = {
     "help": cmd_help,
@@ -214,7 +257,8 @@ COMMANDS = {
 # -------------------- Dependencies --------------------
 def install_dependencies():
     pkgs=["nmap","curl","wget","figlet","toilet","whois","dnsutils","netcat","git","python"]
-    for pkg in pkgs: check_install(pkg)
+    for pkg in pkgs: 
+        check_install(pkg)
 
 # -------------------- Main curses loop --------------------
 def main_dashboard(stdscr):
@@ -230,24 +274,29 @@ def main_dashboard(stdscr):
     banner(stdscr)
 
     while True:
-        stdscr.addstr(4,0,f"[HCO-Terminal]> ", curses.color_pair(1))
+        stdscr.addstr(4, 0, "[HCO-Terminal]> ", curses.color_pair(1))
         stdscr.refresh()
         curses.echo()
         try:
-            cmd_input = stdscr.getstr(4,17).decode("utf-8").strip()
+            cmd_input = stdscr.getstr(4, 17).decode("utf-8").strip()
         except:
             continue
         curses.noecho()
-        if not cmd_input: continue
-        parts=cmd_input.split()
+        if not cmd_input: 
+            continue
+        parts = cmd_input.split()
         cmd = parts[0].lower()
         args = parts[1:]
         func = COMMANDS.get(cmd, None)
         if func:
-            output = func(args)
+            try:
+                output = func(args)
+            except Exception as e:
+                output = f"Error executing command: {str(e)}"
         else:
             output = f"Unknown command: {cmd}"
-        if output=="clear":
+            
+        if output == "clear":
             stdscr.clear()
             dash.entries.clear()
             banner(stdscr)
@@ -258,7 +307,7 @@ def main_dashboard(stdscr):
             dash.display(stdscr)
 
 # -------------------- Main --------------------
-if __name__=="__main__":
+if __name__ == "__main__":
     tool_lock()            # Tool lock + YouTube redirect
     install_dependencies()  # Ensure all packages installed
     curses.wrapper(main_dashboard)
